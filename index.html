@@ -729,7 +729,7 @@
             hideError();
             
             try {
-                // Reverse geocode to get location name with better parameters for city/town
+                // Reverse geocode to get location name with better parameters for city detection
                 const reverseGeocodeResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1&zoom=10`);
                 const reverseGeocodeData = await reverseGeocodeResponse.json();
                 
@@ -767,8 +767,8 @@
         function displayAccurateWeatherData(locationData, data) {
             hideLoading();
             
-            // Extract location name - IMPROVED VERSION for city/town
-            let locationNameText = extractCityOrTownName(locationData);
+            // Extract location name - SPECIFICALLY FOR CITY (NOT COUNTY)
+            let locationNameText = extractCityName(locationData);
             
             // Update location and date
             locationName.textContent = locationNameText;
@@ -813,53 +813,69 @@
             weatherDisplay.style.display = 'block';
         }
         
-        // IMPROVED: Function to extract city or town name (not road names)
-        function extractCityOrTownName(locationData) {
+        // NEW: Function to extract ONLY city name (not county)
+        function extractCityName(locationData) {
             console.log('Location data:', locationData); // Debug log
             
             // For direct search results (when user searches for a location)
-            if (locationData.display_name && locationData.type === 'city' || locationData.type === 'town') {
-                return locationData.display_name.split(',')[0];
+            if (locationData.display_name && (locationData.type === 'city' || locationData.class === 'boundary')) {
+                const parts = locationData.display_name.split(',');
+                // Return the city name (usually first part)
+                return parts[0].trim();
             }
             
             // For reverse geocoding results (when using My Location or clicking map)
             if (locationData.address) {
                 const address = locationData.address;
                 
-                // Priority order for location names - specifically avoiding road names
-                const locationTypes = [
-                    'city', 'town', 'village', 'municipality', 
-                    'county', 'state', 'country'
-                ];
-                
-                // Find the most specific location name available
-                for (const type of locationTypes) {
-                    if (address[type]) {
-                        return address[type];
-                    }
+                // STRICTLY prioritize city names and avoid counties
+                if (address.city) {
+                    return address.city;
+                }
+                if (address.town) {
+                    return address.town;
+                }
+                if (address.village) {
+                    return address.village;
+                }
+                if (address.municipality) {
+                    return address.municipality;
                 }
                 
-                // If no city/town found, try to extract from display_name intelligently
+                // For US locations, try to find the city in display_name
                 if (locationData.display_name) {
                     const parts = locationData.display_name.split(',');
-                    // Skip road names and look for city/town names (usually 2nd or 3rd part)
-                    for (let i = 1; i < Math.min(parts.length, 4); i++) {
+                    // Look for city names in the display_name (usually before the state)
+                    for (let i = 0; i < parts.length; i++) {
                         const part = parts[i].trim();
-                        // Check if this looks like a city/town (not a road or number)
-                        if (part && !/\d/.test(part) && part.length > 2) {
+                        // Skip if it's a state, zip code, or county
+                        if (part && 
+                            !part.match(/\d{5}/) && // Not a zip code
+                            !part.match(/^[A-Z]{2}$/) && // Not a state abbreviation
+                            !part.toLowerCase().includes('county') && // Not a county
+                            part.length > 2) {
                             return part;
                         }
                     }
-                    // Fallback to first non-road part
-                    return parts[0].trim();
+                }
+                
+                // If we absolutely can't find a city, use state instead of county
+                if (address.state) {
+                    return address.state;
                 }
             }
             
             // For direct search with display_name only
             if (locationData.display_name) {
                 const parts = locationData.display_name.split(',');
-                // Return the most likely city/town part (usually index 0 or 1)
-                return parts.length > 1 ? parts[1].trim() : parts[0].trim();
+                // Filter out counties and return the first non-county part
+                for (let part of parts) {
+                    const trimmed = part.trim();
+                    if (trimmed && !trimmed.toLowerCase().includes('county')) {
+                        return trimmed;
+                    }
+                }
+                return parts[0].trim();
             }
             
             // Final fallback
