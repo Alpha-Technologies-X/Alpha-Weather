@@ -96,6 +96,25 @@
             box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
         }
         
+        .location-btn {
+            background: #34a853;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            padding: 16px 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .location-btn:hover {
+            background: #2e9445;
+        }
+        
         .map-container {
             height: 280px;
             border-radius: 16px;
@@ -172,6 +191,53 @@
             font-size: 5rem;
             text-align: center;
             filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+        }
+        
+        /* Weather Animations */
+        @keyframes sunRotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes cloudFloat {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(5px); }
+            100% { transform: translateX(0); }
+        }
+        
+        @keyframes rainFall {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(10px); }
+        }
+        
+        @keyframes snowFall {
+            0% { transform: translateY(0) rotate(0deg); }
+            100% { transform: translateY(15px) rotate(360deg); }
+        }
+        
+        @keyframes thunderFlash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .sunny-animation {
+            animation: sunRotate 20s linear infinite;
+        }
+        
+        .cloudy-animation {
+            animation: cloudFloat 4s ease-in-out infinite;
+        }
+        
+        .rainy-animation {
+            animation: rainFall 1.5s ease-in-out infinite;
+        }
+        
+        .snowy-animation {
+            animation: snowFall 3s linear infinite;
+        }
+        
+        .thunderstorm-animation {
+            animation: thunderFlash 2s ease-in-out infinite;
         }
         
         .weather-details {
@@ -356,7 +422,7 @@
                 flex-direction: column;
             }
             
-            .search-btn {
+            .search-btn, .location-btn {
                 width: 100%;
             }
             
@@ -400,6 +466,12 @@
             <form class="search-form" id="search-form">
                 <input type="text" class="search-input" id="location-input" placeholder="Enter city name or postal code">
                 <button type="submit" class="search-btn">Search</button>
+                <button type="button" class="location-btn" id="location-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+                    </svg>
+                    My Location
+                </button>
             </form>
             <div class="map-container">
                 <div id="map"></div>
@@ -482,6 +554,7 @@
         // DOM elements
         const searchForm = document.getElementById('search-form');
         const locationInput = document.getElementById('location-input');
+        const locationBtn = document.getElementById('location-btn');
         const weatherDisplay = document.getElementById('weather-display');
         const loading = document.getElementById('loading');
         const errorMessage = document.getElementById('error-message');
@@ -507,25 +580,55 @@
             }
         });
 
-        // Get user's current location on startup
+        locationBtn.addEventListener('click', function() {
+            getCurrentLocation();
+        });
+
+        // Get user's current location
         function getCurrentLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    position => {
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-                        map.setView([lat, lon], 10);
-                        marker.setLatLng([lat, lon]);
-                        getWeatherByCoords(lat, lon);
-                    },
-                    error => {
-                        console.log('Geolocation failed, using default location');
-                        getWeatherByLocation('New York');
-                    }
-                );
-            } else {
-                getWeatherByLocation('New York');
+            showLoading();
+            hideError();
+            
+            if (!navigator.geolocation) {
+                showError('Geolocation is not supported by your browser');
+                return;
             }
+            
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    // Update map and marker
+                    map.setView([lat, lon], 10);
+                    marker.setLatLng([lat, lon]);
+                    
+                    // Get weather for current location
+                    getWeatherByCoords(lat, lon);
+                },
+                error => {
+                    let errorMessage = 'Unable to retrieve your location. ';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage += 'Please allow location access to use this feature.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage += 'Location information is unavailable.';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage += 'Location request timed out.';
+                            break;
+                        default:
+                            errorMessage += 'An unknown error occurred.';
+                    }
+                    showError(errorMessage);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                }
+            );
         }
         
         // Function to get weather by location name or postal code
@@ -573,10 +676,10 @@
             }
         }
         
-        // Function to get ACCURATE weather data from multiple sources
+        // Function to get ACCURATE weather data
         async function getAccurateWeatherData(lat, lon, locationData) {
             try {
-                // Try Open-Meteo API first (most reliable)
+                // Using Open-Meteo API (most reliable free API)
                 const openMeteoResponse = await fetch(
                     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,surface_pressure,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=6`
                 );
@@ -591,7 +694,7 @@
                 displayAccurateWeatherData(locationData, weatherData);
                 
             } catch (error) {
-                console.error('Open-Meteo failed:', error);
+                console.error('Weather API failed:', error);
                 showError('Unable to fetch current weather data. Please try again.');
             }
         }
@@ -623,7 +726,11 @@
             currentTemp.textContent = `${Math.round(current.temperature_2m)}°`;
             const currentCondition = getWeatherCondition(current.weather_code, current.is_day);
             weatherCondition.textContent = currentCondition;
-            weatherIcon.textContent = getWeatherIcon(current.weather_code, current.is_day);
+            
+            // Set weather icon with animation
+            const icon = getWeatherIcon(current.weather_code, current.is_day);
+            weatherIcon.textContent = icon;
+            applyWeatherAnimation(current.weather_code);
             
             // Update weather details with REAL data
             feelsLike.textContent = `${Math.round(current.apparent_temperature)}°`;
@@ -639,6 +746,33 @@
             
             // Show weather display
             weatherDisplay.style.display = 'block';
+        }
+        
+        // Apply weather animations
+        function applyWeatherAnimation(weatherCode) {
+            const weatherIcon = document.getElementById('weather-icon');
+            
+            // Remove all animation classes
+            weatherIcon.classList.remove(
+                'sunny-animation', 
+                'cloudy-animation', 
+                'rainy-animation', 
+                'snowy-animation', 
+                'thunderstorm-animation'
+            );
+            
+            // Apply appropriate animation
+            if (weatherCode === 0 || weatherCode === 1) {
+                weatherIcon.classList.add('sunny-animation');
+            } else if (weatherCode === 2 || weatherCode === 3) {
+                weatherIcon.classList.add('cloudy-animation');
+            } else if (weatherCode >= 51 && weatherCode <= 67 || weatherCode >= 80 && weatherCode <= 82) {
+                weatherIcon.classList.add('rainy-animation');
+            } else if (weatherCode >= 71 && weatherCode <= 77 || weatherCode >= 85 && weatherCode <= 86) {
+                weatherIcon.classList.add('snowy-animation');
+            } else if (weatherCode >= 95 && weatherCode <= 99) {
+                weatherIcon.classList.add('thunderstorm-animation');
+            }
         }
         
         // Function to update forecast with ACCURATE data
