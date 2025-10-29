@@ -537,7 +537,7 @@
             <div class="map-container">
                 <div id="map"></div>
             </div>
-            <div class="api-info">Powered by Open-Meteo & OpenWeatherMap</div>
+            <div class="api-info">Powered by Open-Meteo, OpenWeatherMap, 14592 Studios X Dem Studios, & Alpha Technologies</div>
         </div>
         
         <div class="loading" id="loading">
@@ -728,8 +728,8 @@
             hideError();
             
             try {
-                // Reverse geocode to get location name with better parameters
-                const reverseGeocodeResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`);
+                // Reverse geocode to get location name with better parameters for city/town
+                const reverseGeocodeResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1&zoom=10`);
                 const reverseGeocodeData = await reverseGeocodeResponse.json();
                 
                 // Get weather data
@@ -766,8 +766,8 @@
         function displayAccurateWeatherData(locationData, data) {
             hideLoading();
             
-            // Extract location name - FIXED VERSION
-            let locationNameText = extractLocationName(locationData);
+            // Extract location name - IMPROVED VERSION for city/town
+            let locationNameText = extractCityOrTownName(locationData);
             
             // Update location and date
             locationName.textContent = locationNameText;
@@ -812,35 +812,56 @@
             weatherDisplay.style.display = 'block';
         }
         
-        // FIXED: Function to extract location name
-        function extractLocationName(locationData) {
+        // IMPROVED: Function to extract city or town name (not road names)
+        function extractCityOrTownName(locationData) {
             console.log('Location data:', locationData); // Debug log
             
-            // For direct search results
-            if (locationData.display_name) {
-                const parts = locationData.display_name.split(',');
-                // Return the first part (usually the city/town name)
-                return parts[0].trim();
+            // For direct search results (when user searches for a location)
+            if (locationData.display_name && locationData.type === 'city' || locationData.type === 'town') {
+                return locationData.display_name.split(',')[0];
             }
             
-            // For reverse geocoding results
+            // For reverse geocoding results (when using My Location or clicking map)
             if (locationData.address) {
                 const address = locationData.address;
                 
-                // Priority order for location names
-                if (address.city) return address.city;
-                if (address.town) return address.town;
-                if (address.village) return address.village;
-                if (address.municipality) return address.municipality;
-                if (address.hamlet) return address.hamlet;
-                if (address.suburb) return address.suburb;
-                if (address.neighbourhood) return address.neighbourhood;
-                if (address.county) return address.county;
-                if (address.state) return address.state;
-                if (address.country) return address.country;
+                // Priority order for location names - specifically avoiding road names
+                const locationTypes = [
+                    'city', 'town', 'village', 'municipality', 
+                    'county', 'state', 'country'
+                ];
+                
+                // Find the most specific location name available
+                for (const type of locationTypes) {
+                    if (address[type]) {
+                        return address[type];
+                    }
+                }
+                
+                // If no city/town found, try to extract from display_name intelligently
+                if (locationData.display_name) {
+                    const parts = locationData.display_name.split(',');
+                    // Skip road names and look for city/town names (usually 2nd or 3rd part)
+                    for (let i = 1; i < Math.min(parts.length, 4); i++) {
+                        const part = parts[i].trim();
+                        // Check if this looks like a city/town (not a road or number)
+                        if (part && !/\d/.test(part) && part.length > 2) {
+                            return part;
+                        }
+                    }
+                    // Fallback to first non-road part
+                    return parts[0].trim();
+                }
             }
             
-            // Fallback
+            // For direct search with display_name only
+            if (locationData.display_name) {
+                const parts = locationData.display_name.split(',');
+                // Return the most likely city/town part (usually index 0 or 1)
+                return parts.length > 1 ? parts[1].trim() : parts[0].trim();
+            }
+            
+            // Final fallback
             return 'Current Location';
         }
         
